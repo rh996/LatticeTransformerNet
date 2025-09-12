@@ -21,6 +21,24 @@ function initialize_configuration(Nelec::Int64, L::Int64)
     return config
 end
 
+function initialize_configuration(Nup::Int, Ndn::Int, L::Int)
+    orbitals = collect(Int64, 1:L)
+    selected_orbital1 = shuffle(orbitals)[1:Nup]
+    selected_orbital2 = shuffle(orbitals)[1:Ndn]
+
+    #spin up and spin dn
+    selected_orbital1 = selected_orbital1 .* 2 .- 1
+    selected_orbital2 = selected_orbital2 .* 2
+
+    selected_orbitals = shuffle(vcat(selected_orbital1, selected_orbital2))
+    selected_electrons = zeros(Int64, 2 * L)
+    for i in selected_orbitals
+        selected_electrons[i] += 1
+    end
+
+
+    config = Configuration(selected_electrons, selected_orbitals)
+end
 
 
 
@@ -318,8 +336,8 @@ end
     Nelec = size(feature, 2)
     batch_size = size(feature, 3)
     feature_reshaped = reshape(feature, 7, Nelec * batch_size)
-    x_processed = sl.layernorm(feature_reshaped)
-    x_processed = sl.W0(x_processed)
+    # x_processed = sl.layernorm(feature_reshaped)
+    x_processed = sl.W0(feature_reshaped)
 
     for layer in sl.mlp
         x_processed = layer(x_processed)

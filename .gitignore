@@ -12,3 +12,6 @@
 
 # Build artifacts
 build/
+
+#random things
+test_anything.jl

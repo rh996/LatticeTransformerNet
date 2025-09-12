@@ -8,7 +8,7 @@ struct HubbardHamiltonian <: Hamiltonian2D
 end
 
 
-function ConstructHoppings(HubbardHamiltonian)
+function ConstructHoppings(HubbardHamiltonian; spin_explicit=false)
     # Construct the 2D hopping matrix for the Hubbard model
     # Sequence: spin_up, spin_dn, spin_up_spin_dn
 
@@ -42,12 +42,20 @@ function ConstructHoppings(HubbardHamiltonian)
 
     H_up = hopping_matrix(Nx, Ny, t)
 
-    # For spin_up_spin_dn, it's just a block diagonal of H_up and H_dn
-    H_total = zeros(Float64, 2 * N_sites, 2 * N_sites)
-    H_total[1:2:end, 1:2:end] = H_up
-    H_total[2:2:end, 2:2:end] = H_up
+    if spin_explicit
 
-    return H_total
+        return H_up
+
+    else
+        # For spin_up_spin_dn, it's just a block diagonal of H_up and H_dn
+        H_total = zeros(Float64, 2 * N_sites, 2 * N_sites)
+        H_total[1:2:end, 1:2:end] = H_up
+        H_total[2:2:end, 2:2:end] = H_up
+
+        return H_total
+
+    end
+
 end
 
 

@@ -49,7 +49,7 @@ end
 Runs the self-consistent field (SCF) loop for the Hubbard model.
 """
 function run_scf(t_matrix, u_interaction, Nelec, initial_mo_coeff;
-    mixing_param=0.1, convergence_tol=1e-6, max_iter=1000)
+    mixing_param=0.1, convergence_tol=1e-6, max_iter=5000)
 
     mo_coeff = deepcopy(initial_mo_coeff)
     last_energy = 0.0
@@ -166,7 +166,7 @@ let
     # --- Parameters ---
     Nx = 6
     Ny = 6
-    Nelec = 6
+    Nelec = 20
     t_hopping = 1.0
     u_interaction = 5.0
 
@@ -180,10 +180,10 @@ let
     # Uncomment the desired method.
 
     # 1. Random initial state
-    # initial_mo_coeff = generate_random_mo_coeff(L)
+    initial_mo_coeff = generate_random_mo_coeff(L)
 
     # 2. Spin-polarized initial state
-    initial_mo_coeff = generate_spin_polarized_mo_coeff(t_matrix)
+    # initial_mo_coeff = generate_spin_polarized_mo_coeff(t_matrix)
 
     # 3. Charge Density Wave (CDW) initial state
     # initial_mo_coeff = generate_cdw_mo_coeff(t_matrix, Nx, Ny)
@@ -193,5 +193,5 @@ let
 
     @info "Final Hartree-Fock Energy: $final_energy"
 
-    display(final_mo_coeff[:, 1:Nelec])
+    # display(final_mo_coeff[:, 1:Nelec])
 end

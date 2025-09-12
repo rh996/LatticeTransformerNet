@@ -1,10 +1,10 @@
-function metropolis_step(ψ::Wavefunction, x::Configuration)
+function metropolis_step(ψ::Wavefunction, x::Configuration; Nup=nothing, Ndn=nothing)
     # Single Metropolis-Hastings update
     #
     # propose a move
 
     L = length(x.Orbitals)
-    Nelect = length(x.Electrons)
+
 
     # Electrons = deepcopy(x.Electrons)
     # ielect = rand(1:Nelect)
@@ -20,8 +20,13 @@ function metropolis_step(ψ::Wavefunction, x::Configuration)
     #     Orbitals[i] += 1
     # end
     # new_x = Configuration(Orbitals, Electrons)
+    if Nup !== nothing && Ndn !== nothing
+        new_x = initialize_configuration(Nup, Ndn, div(L, 2))
+    else
+        Nelect = length(x.Electrons)
+        new_x = initialize_configuration(Nelect, L)
+    end
 
-    new_x = initialize_configuration(Nelect, L)
     old_amp, _ = logabsdet(ψ(x.Electrons))
     new_amp, _ = logabsdet(ψ(new_x.Electrons))
 
