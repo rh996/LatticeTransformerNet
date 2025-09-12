@@ -1,4 +1,4 @@
-# VMC_NQS: Variational Monte Carlo with Neural Quantum States
+# LatticeAttentionNet: Variational Monte Carlo with Attention Neural Quantum States
 
 This project is a Julia-based framework for performing Variational Monte Carlo (VMC) simulations to study quantum many-body systems. It utilizes Neural Quantum States (NQS) to represent the wavefunctions of these systems.
 
