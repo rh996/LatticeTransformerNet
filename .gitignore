@@ -1,0 +1,14 @@
+# Julia project files
+*.log
+*.jl.cov
+*.jl.*.cov
+*.jl.mem
+
+# OS-specific files
+.DS_Store
+
+# Model files
+*.bson
+
+# Build artifacts
+build/
