@@ -1,5 +1,8 @@
 include("VMC.jl")
-using LinearAlgebra, Tullio
+using Tullio
+using LinearAlgebra
+
+# --- Hartree-Fock Core Functions ---
 
 """
     run_hf(t_matrix, u, mocoeff0, Nelec)
@@ -18,7 +21,7 @@ function run_hf(t_matrix, u, mocoeff0, Nelec)
 
     # 2. Build Fock matrix for Hubbard model directly
     # F_ij = t_ij + δ_ij * U * <n_{i,-σ}>
-    Fock = copy(t_matrix)
+    Fock = complex(t_matrix)
     for i in 1:L_sites
         idx_up = (i - 1) * 2 + 1
         idx_down = (i - 1) * 2 + 2
@@ -40,32 +43,76 @@ function run_hf(t_matrix, u, mocoeff0, Nelec)
     return mocoeff, energy
 end
 
+"""
+    run_scf(t_matrix, u_interaction, Nelec, initial_mo_coeff; ...)
 
-let
-    # --- Parameters ---
-    Nx = 4
-    Ny = 4
-    Nelec = 4
-    t_hopping = 1.0
-    u_interaction = 5.0
-    mixing_param = 0.1  # Linear mixing parameter for MO coefficients
-    convergence_tol = 1e-6 # Energy convergence tolerance
+Runs the self-consistent field (SCF) loop for the Hubbard model.
+"""
+function run_scf(t_matrix, u_interaction, Nelec, initial_mo_coeff;
+    mixing_param=0.1, convergence_tol=1e-6, max_iter=1000)
 
-    # --- Setup ---
-    L = Nx * Ny * 2
-    Hamiltonian = HubbardHamiltonian(t_hopping, u_interaction, Nx, Ny)
-    t_matrix = ConstructHoppings(Hamiltonian)
+    mo_coeff = deepcopy(initial_mo_coeff)
+    last_energy = 0.0
+    final_energy = 0.0
 
-    # --- Initial Guess ---
-    # To initialize with a fully spin-polarized state, we apply a small
-    # symmetry-breaking magnetic field to the core Hamiltonian for the initial guess.
-    # This splits the spin-up/down degeneracy, ensuring the lowest `Nelec` orbitals are spin-polarized.
-    @info "Constructing a fully spin-polarized initial state via symmetry breaking..."
+    @info "Starting Hartree-Fock SCF..."
+    for i in 1:max_iter
+        # Run one HF iteration
+        mo_coeff_new, energy = run_hf(t_matrix, u_interaction, mo_coeff, Nelec)
+        final_energy = energy
+
+        # Mix new and old MOs to aid convergence
+        mo_coeff_mixed = mixing_param * mo_coeff_new + (1 - mixing_param) * mo_coeff
+
+        # Re-orthogonalize the mixed coefficients using Löwdin orthogonalization
+        overlap_matrix = mo_coeff_mixed' * mo_coeff_mixed
+        mo_coeff = mo_coeff_mixed * (overlap_matrix^(-1 / 2))
+
+        @info "Iteration $i, Energy = $energy"
+
+        # Check for convergence
+        if abs(energy - last_energy) < convergence_tol
+            @info "Hartree-Fock converged in $i iterations."
+            return mo_coeff, energy
+        end
+        last_energy = energy
+
+        if i == max_iter
+            @warn "Hartree-Fock did not converge within $max_iter iterations."
+        end
+    end
+
+    return mo_coeff, final_energy
+end
+
+
+# --- Initial State Generators ---
+
+"""
+    generate_random_mo_coeff(L)
+
+Generates a random set of orthonormal molecular orbitals.
+"""
+function generate_random_mo_coeff(L)
+    @info "Constructing a random initial state..."
+    random_matrix = rand(ComplexF64, L, L)
+    hermitian_matrix = random_matrix + random_matrix'
+    _, mo_coeff = eigen(hermitian_matrix)
+    return mo_coeff
+end
+
+"""
+    generate_spin_polarized_mo_coeff(t_matrix; h_field=1e-4)
+
+Generates MO coefficients for a spin-polarized initial state by applying a
+symmetry-breaking magnetic field.
+"""
+function generate_spin_polarized_mo_coeff(t_matrix; h_field=1e-4)
+    @info "Constructing a spin-polarized initial state via symmetry breaking..."
+    L = size(t_matrix, 1)
     t_perturbed = copy(t_matrix)
-    h_field = 1e-4 # Small magnetic field strength
 
     # Lower the energy of spin-up orbitals and raise spin-down
-    # This assumes odd indices are spin-up and even are spin-down.
     for i in 1:L
         if isodd(i)
             t_perturbed[i, i] -= h_field
@@ -74,32 +121,77 @@ let
         end
     end
 
-    # Diagonalize the perturbed Hamiltonian. The first `Nelec` eigenvectors
-    # will now correspond to the lowest-energy (spin-up) orbitals.
-    # v, mo_coeff = eigen(Hermitian(t_perturbed))
-    v, mo_coeff = eigen(t_matrix)
+    _, mo_coeff = eigen(Hermitian(t_perturbed))
+    return mo_coeff
+end
 
-    # The SCF loop will now naturally start from a polarized state by occupying
-    # these first `Nelec` orbitals. The actual SCF iterations use the original, unperturbed t_matrix.
+"""
+    generate_cdw_mo_coeff(t_matrix, Nx, Ny; V_staggered=0.1)
 
-    # --- SCF Loop ---
-    last_energy = 0.0
-    for i in 1:1
-        mo_coeff_old = deepcopy(mo_coeff)
+Generates MO coefficients for a charge density wave (CDW) initial state
+by applying a staggered potential.
+"""
+function generate_cdw_mo_coeff(t_matrix, Nx, Ny; V_staggered=0.1)
+    @info "Constructing a CDW initial state..."
+    L = size(t_matrix, 1)
+    L_sites = L ÷ 2
+    @assert L_sites == Nx * Ny "Mismatch between lattice size and hopping matrix dimension."
 
-        # Run one HF iteration
-        mo_coeff_new, energy = run_hf(t_matrix, u_interaction, mo_coeff_old, Nelec)
+    t_perturbed = copy(t_matrix)
 
-        # Mix new and old MOs to aid convergence
-        mo_coeff = mixing_param * mo_coeff_new + (1 - mixing_param) * mo_coeff_old
+    for i in 1:L_sites
+        # Map site index `i` to 2D coordinates (ix, iy)
+        # Assuming row-major order for sites: site `i` is at (iy, ix)
+        ix = (i - 1) % Nx
+        iy = ((i - 1) ÷ Nx) % Ny
 
-        @info "Iteration $i, Energy = $energy"
-        # @info "Idenpotent $()"
-        # Check for convergence
-        if abs(energy - last_energy) < convergence_tol
-            @info "Hartree-Fock converged in $i iterations."
-            break
-        end
-        last_energy = energy
+        potential = V_staggered * (-1)^(ix + iy)
+
+        # Get spin-up and spin-down indices for site i
+        idx_up = (i - 1) * 2 + 1
+        idx_down = (i - 1) * 2 + 2
+
+        # Add potential to both spin channels
+        t_perturbed[idx_up, idx_up] += potential
+        t_perturbed[idx_down, idx_down] += potential
     end
+
+    _, mo_coeff = eigen(Hermitian(t_perturbed))
+    return mo_coeff
+end
+
+
+# --- Main Execution Block ---
+let
+    # --- Parameters ---
+    Nx = 6
+    Ny = 6
+    Nelec = 6
+    t_hopping = 1.0
+    u_interaction = 5.0
+
+    # --- Setup ---
+    L = Nx * Ny * 2
+    Hamiltonian = HubbardHamiltonian(t_hopping, u_interaction, Nx, Ny)
+    t_matrix = ConstructHoppings(Hamiltonian)
+
+    # --- Initial State Generation ---
+    # Choose one of the following methods to generate the initial MO coefficients.
+    # Uncomment the desired method.
+
+    # 1. Random initial state
+    # initial_mo_coeff = generate_random_mo_coeff(L)
+
+    # 2. Spin-polarized initial state
+    initial_mo_coeff = generate_spin_polarized_mo_coeff(t_matrix)
+
+    # 3. Charge Density Wave (CDW) initial state
+    # initial_mo_coeff = generate_cdw_mo_coeff(t_matrix, Nx, Ny)
+
+    # --- Run SCF ---
+    final_mo_coeff, final_energy = run_scf(t_matrix, u_interaction, Nelec, initial_mo_coeff)
+
+    @info "Final Hartree-Fock Energy: $final_energy"
+
+    display(final_mo_coeff[:, 1:Nelec])
 end
