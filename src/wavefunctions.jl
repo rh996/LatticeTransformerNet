@@ -8,6 +8,9 @@ struct Configuration
     Electrons::Vector{Int64}
 end
 
+"""
+Initialize a configuration
+"""
 function initialize_configuration(Nelec::Int64, L::Int64)
     # Randomly select Nelec unique orbitals from L boxes
     orbitals = collect(Int64, 1:L)
@@ -21,7 +24,13 @@ function initialize_configuration(Nelec::Int64, L::Int64)
     return config
 end
 
+
+"""
+Initialize a configuration for each spin specie.
+The particle numbers are individually conserved.
+"""
 function initialize_configuration(Nup::Int, Ndn::Int, L::Int)
+
     orbitals = collect(Int64, 1:L)
     selected_orbital1 = shuffle(orbitals)[1:Nup]
     selected_orbital2 = shuffle(orbitals)[1:Ndn]
