@@ -41,3 +41,19 @@ end
 
 
 
+# function logabsdet(A::AbstractArray{T,3}) where {T<:Union{Float32,Float64}}
+#     ndet = size(A, 3)
+#     s = []
+#     logs = []
+#     for i in ndet
+#         log_t, s_t = logabsdet(A[:, :, i])
+#         push!(logs, log_t)
+#         push!(s, s_t)
+#     end
+#     logs = vec(logs)
+#     logmax = maximum(logs)
+#     logs = logs .- logmax
+
+
+#     return
+# end

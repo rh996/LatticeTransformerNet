@@ -69,16 +69,9 @@ function amplitude(ψ::SlaterDeterminant, x::Configuration)
 end
 
 function logabsamplitude(ψ::SlaterDeterminant, x::Configuration)
-    # Compute logΨ(x) for Slater determinant
-    F = lu(ψ.Mocoeff[x.Electrons, :]; check=false)          # no exception on singular
-    d = diag(F.U)                   # pivots
-    # detect exact/tiny pivots (treat as node)
-    atol = eps(real(one(eltype(d)))) * size(ψ.Mocoeff[x.Electrons, :], 1) * 10
-    if any(x -> iszero(x) || abs(x) ≤ atol, d)
-        return -Inf
-    end
-    # log-abs determinant
-    logabs = sum(@views log.(abs.(d)))
+    # Compute log|Ψ(x)| and phase for Slater determinant
+    logabs, phase = logabsdet(ψ.Mocoeff[x.Electrons, :])
+    return logabs, phase
 end
 
 (sl::SlaterDeterminant)(x) = sl.Mocoeff[x, :]
@@ -121,18 +114,10 @@ function amplitude(ψ::Gutzwiller, x::Configuration)
 end
 
 function logabsamplitude(ψ::Gutzwiller, x::Configuration)
-    F = lu(ψ.Mocoeff[x.Electrons, :]; check=false)          # no exception on singular
-    d = diag(F.U)                   # pivots
-    # detect exact/tiny pivots (treat as node)
-    atol = eps(real(one(eltype(d)))) * size(ψ.Mocoeff[x.Electrons, :], 1) * 10
-    if any(x -> iszero(x) || abs(x) ≤ atol, d)
-        return -Inf
-    end
-
+    logabs_det, phase = logabsdet(ψ.Mocoeff[x.Electrons, :])
     spactialOrbital = x.Orbitals[1:2:end] + x.Orbitals[2:2:end]
     double_occupancy = sum(spactialOrbital .> 1)  # Count double occupancy
-    # log-abs determinant
-    return -ψ.g * double_occupancy + sum(@views log.(abs.(d)))
+    return -ψ.g * double_occupancy + logabs_det, phase
 end
 
 (gw::Gutzwiller)(x) = begin
@@ -220,14 +205,7 @@ function amplitude(ψ::JastrowLimited, x::Configuration)
 end
 
 function logabsamplitude(ψ::JastrowLimited, x::Configuration)
-    F = lu(ψ.Mocoeff[x.Electrons, :]; check=false)          # no exception on singular
-    d = diag(F.U)                   # pivots
-    # detect exact/tiny pivots (treat as node)
-    atol = eps(real(one(eltype(d)))) * size(ψ.Mocoeff[x.Electrons, :], 1) * 10
-    if any(x -> iszero(x) || abs(x) ≤ atol, d)
-        return -Inf
-    end
-
+    logabs_det, phase = logabsdet(ψ.Mocoeff[x.Electrons, :])
 
     exponent_sum = 0.0
     for i in eachindex(x.Electrons)
@@ -246,7 +224,7 @@ function logabsamplitude(ψ::JastrowLimited, x::Configuration)
     double_occupancy = sum(spactialOrbital .> 1)  # Count double occupancy
     exponent_sum += -ψ.g * double_occupancy  # Add the Gutzwiller term
 
-    return exponent_sum + sum(@views log.(abs.(d)))
+    return exponent_sum + logabs_det, phase
 end
 
 (jl::JastrowLimited)(x) = begin
@@ -360,6 +338,11 @@ end
 
 
     return RealOrbitals_reshaped
+end
+
+function logabsamplitude(ψ::SlaterNet, x::Configuration)
+    logabs, phase = logabsdet(ψ(x.Electrons))
+    return logabs, phase
 end
 
 
@@ -499,7 +482,48 @@ end
 
     return x_reshaped
 end
-amplitude(tn::TransformerNet, x::Configuration) = tn(x.Electrons)
+amplitude(tn::TransformerNet, x::Configuration) = begin
+    logabs, phase = logabsamplitude(tn, x)
+    if !isfinite(logabs) || phase == 0
+        return zero(phase)
+    end
+    return phase * exp(logabs)
+end
+
+function logabsamplitude(ψ::TransformerNet, x::Configuration)
+    raw = ψ(x.Electrons)
+    Nelec = length(x.Electrons)
+    num_slaters = div(size(raw, 2), Nelec)
+    raw_stack = reshape(raw, Nelec, num_slaters, Nelec)
+    orbital_stack = permutedims(raw_stack, (1, 3, 2))
+
+    num_slaters >= 1 || error("TransformerNet requires at least one Slater determinant")
+
+    first_log, first_phase = logabsdet(@view orbital_stack[:, :, 1])
+    max_log = first_log
+    scaled_sum = first_phase
+
+    for idx in 2:num_slaters
+        logval, phase = logabsdet(@view orbital_stack[:, :, idx])
+        if logval > max_log
+            scaled_sum = phase + scaled_sum * exp(max_log - logval)
+            max_log = logval
+        else
+            scaled_sum = scaled_sum + phase * exp(logval - max_log)
+        end
+    end
+
+    if !isfinite(max_log)
+        return -Inf, zero(first_phase)
+    end
+
+    total_amp = exp(max_log) * scaled_sum
+    abs_total = abs(total_amp)
+    if abs_total == 0
+        return -Inf, zero(total_amp)
+    end
+    return log(abs_total), total_amp / abs_total
+end
 
 
 

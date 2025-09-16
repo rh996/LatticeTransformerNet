@@ -60,37 +60,37 @@ function OptimizeEnergy!(ψ::JastrowLimited, EnergyEx::Float64, LocalEstimatorLi
 end
 
 function LocalEstimator(ψ::Union{SlaterNet,TransformerNet}, xs::Vector{Configuration})
-    # compute ∂ log|ψ| = ∂ log |det M|
-    local_est_list = [
-        let
-            # @show x.Electrons
-            amp, grads = Flux.withgradient(ψ) do m
-                logabsdet(m(x.Electrons))
-            end
-
-            # @show amp
-            v, _ = destructure(grads[1])
-
-            v
-        end for x in xs
-    ]
-
-    amp, grads = Flux.withgradient(ψ) do m
-        logabsdet(m(xs[1].Electrons))
+    # compute ∂ log|ψ|
+    first_config = xs[1]
+    _, grads = Flux.withgradient(ψ) do m
+        logabsamplitude(m, first_config)[1]
     end
-    v, re = destructure(grads[1])
+
+    first_vec, re = destructure(grads[1])
+    local_est_list = Vector{typeof(first_vec)}(undef, length(xs))
+    local_est_list[1] = first_vec
+
+    for (idx, x) in enumerate(xs[2:end])
+        _, grads_i = Flux.withgradient(ψ) do m
+            logabsamplitude(m, x)[1]
+        end
+
+        v, _ = destructure(grads_i[1])
+        local_est_list[idx + 1] = v
+    end
+
     return local_est_list, re
 
 end
 
 function OptimizeEnergy!(ψ::Union{SlaterNet,TransformerNet}, EnergyEx::Float64, LocalEstimatorList::Vector, LocalEList::Vector, re, opt)
-    # @show size(LocalEstimatorList)
-    # @show size(LocalEstimatorList[1])
+    #TODO: clip the gradient
 
 
-    E_m_E_ex = (LocalEList .- EnergyEx)
+    T = eltype(LocalEstimatorList[1])
+    E_m_E_ex = T.(LocalEList .- EnergyEx)
     # @show size(E_m_E_ex)
-    Avegradient = 2 * mean(E_m_E_ex .* LocalEstimatorList)
+    Avegradient = T(2) * mean(E_m_E_ex .* LocalEstimatorList)
 
     Avegradient = re(Avegradient)
 

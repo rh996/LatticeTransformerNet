@@ -15,3 +15,5 @@ build/
 
 #random things
 test_anything.jl
+AGENTS.md
+.gitignore

@@ -5,6 +5,7 @@ using LinearAlgebra
 using Tullio
 using Statistics
 using ProgressMeter
+using BSON
 using BSON: @save, @load
 
 include("wavefunctions.jl")
@@ -156,7 +157,7 @@ function RunVMCNQS(
         # ψ = ψ_transform
     end
 
-    opt = Flux.setup(Adam(lr), ψ)
+    opt = Flux.setup(AdamW(lr), ψ)
     @info "Training model with $wf_type wavefunction"
     for opt_step in 1:OptimizationSteps
 
@@ -242,11 +243,14 @@ function RunVMCNQS(
             @info "Initializing model parameters randomly"
         end
     elseif wf_type == :TransformerNet
-        ψ = Flux.f32(TransformerNet(; num_att_block=3, num_heads=4, num_slaters=2, embsize=24, Nx=Nx, Ny=Ny, Nelec=(Nup + Ndn)))
+        ψ = Flux.f32(TransformerNet(; num_att_block=3, num_heads=4, num_slaters=3, embsize=12, Nx=Nx, Ny=Ny, Nelec=(Nup + Ndn)))
         if isfile(init_params)
             @info "Loading pre-trained model parameters from $init_params"
-            # ψ_transform = nothing
-            @load init_params ψ
+            data = BSON.load(init_params)
+            for k in keys(data)
+                ψ = data[k]
+            end
+
         else
             @info "Initializing model parameters randomly"
         end

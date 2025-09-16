@@ -164,11 +164,11 @@ end
 # --- Main Execution Block ---
 let
     # --- Parameters ---
-    Nx = 6
-    Ny = 6
-    Nelec = 36
+    Nx = 4
+    Ny = 4
+    Nelec = 8
     t_hopping = 1.0
-    u_interaction = 3.0
+    u_interaction = 5.0
 
     # --- Setup ---
     L = Nx * Ny * 2
@@ -180,10 +180,10 @@ let
     # Uncomment the desired method.
 
     # 1. Random initial state
-    # initial_mo_coeff = generate_random_mo_coeff(L)
+    initial_mo_coeff = generate_random_mo_coeff(L)
 
     # 2. Spin-polarized initial state
-    initial_mo_coeff = generate_spin_polarized_mo_coeff(t_matrix)
+    # initial_mo_coeff = generate_spin_polarized_mo_coeff(t_matrix)
 
     # 3. Charge Density Wave (CDW) initial state
     # initial_mo_coeff = generate_cdw_mo_coeff(t_matrix, Nx, Ny)

@@ -1,9 +1,9 @@
 include("../src/VMC.jl")
 let
     RunVMC(
-        6,
-        6,
-        20,
+        4,
+        4,
+        4,
         1.0,
         5.0;
         TotalSteps=101000,

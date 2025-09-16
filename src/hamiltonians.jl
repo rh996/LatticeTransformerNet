@@ -68,7 +68,10 @@ function local_energy(H::HubbardHamiltonian, tmatrix::Matrix, connection_indx::V
     V = H.U * sum((x.Orbitals[1:2:end] + x.Orbitals[2:2:end]) .> 1)  # Count double occupancy
 
     #compute K(R)
-    amp, s = logabsdet(ψ(x.Electrons))
+    logabs, phase = logabsamplitude(ψ, x)
+    if phase == 0 || !isfinite(logabs)
+        return V
+    end
     for id in connection_indx
         if (x.Orbitals[id[2]] == 1) && (x.Orbitals[id[1]] == 0) # id[1] is unoccupied, id[2] is occupied
             new_electrons = deepcopy(x.Electrons)
@@ -82,8 +85,12 @@ function local_energy(H::HubbardHamiltonian, tmatrix::Matrix, connection_indx::V
                 end
             end
             new_x = Configuration(new_orbitals, new_electrons)
-            amp_m, s_m = logabsdet(ψ(new_x.Electrons))
-            K += tmatrix[id] * exp(amp_m - amp) * s_m * s
+            logabs_m, phase_m = logabsamplitude(ψ, new_x)
+            if phase_m == 0 || !isfinite(logabs_m)
+                continue
+            end
+            ratio = exp(logabs_m - logabs) * (phase_m / phase)
+            K += tmatrix[id] * ratio
 
         end
 
@@ -98,22 +105,34 @@ function local_energy(ψ::Union{SlaterNet,TransformerNet}, H::HubbardHamiltonian
             x = config
             V = H.U * sum((x.Orbitals[1:2:end] + x.Orbitals[2:2:end]) .> 1)
 
-            amp, s = logabsdet(ψ(x.Electrons))
-            K = 0.0
-            for id in connection_indx
-                if (x.Orbitals[id[2]] == 1) && (x.Orbitals[id[1]] == 0) # id[1] is unoccupied, id[2] is occupied
-                    new_electrons = copy(x.Electrons)
-                    for j in eachindex(new_electrons)
-                        if x.Electrons[j] == id[2]
-                            new_electrons = [new_electrons[1:j-1]..., id[1], new_electrons[j+1:end]...]
-                            break
+            logabs, phase = logabsamplitude(ψ, x)
+            if phase == 0 || !isfinite(logabs)
+                V
+            else
+                K = 0.0
+                for id in connection_indx
+                    if (x.Orbitals[id[2]] == 1) && (x.Orbitals[id[1]] == 0) # id[1] is unoccupied, id[2] is occupied
+                        new_electrons = copy(x.Electrons)
+                        for j in eachindex(new_electrons)
+                            if x.Electrons[j] == id[2]
+                                new_electrons = [new_electrons[1:j-1]..., id[1], new_electrons[j+1:end]...]
+                                break
+                            end
                         end
+                        new_orbitals = zeros(Int64, length(x.Orbitals))
+                        for orb in new_electrons
+                            new_orbitals[orb] += 1
+                        end
+                        logabs_m, phase_m = logabsamplitude(ψ, Configuration(new_orbitals, new_electrons))
+                        if phase_m == 0 || !isfinite(logabs_m)
+                            continue
+                        end
+                        ratio = exp(logabs_m - logabs) * (phase_m / phase)
+                        K += tmatrix[id] * ratio
                     end
-                    amp_m, s_m = logabsdet(ψ(new_electrons))
-                    K += tmatrix[id] * exp(amp_m - amp) * s_m * s
                 end
+                V + K
             end
-            V + K
         end for config in configs
     ]
     return E_locs
