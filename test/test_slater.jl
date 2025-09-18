@@ -8,7 +8,7 @@ let
         5.0;
         TotalSteps=101000,
         ThermalizationSteps=1000,
-        OptimizationSteps=50,
+        OptimizationSteps=20,
         wf_type=:JastrowLimited,
         seed=11,
         lr=0.01

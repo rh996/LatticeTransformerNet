@@ -360,7 +360,7 @@ function AttentionBlock(; emb_size, num_heads)
     AttentionBlock(
         LayerNorm(emb_size),
         MultiHeadAttention(emb_size, nheads=num_heads, dropout_prob=0.1),
-        Dense(emb_size, emb_size, selu; bias=true, init=Flux.Flux.kaiming_normal)
+        Dense(emb_size, emb_size, tanh; bias=true, init=Flux.Flux.kaiming_normal)
     )
 end
 

@@ -99,6 +99,9 @@ function RunVMC(
             ψ = OptimizeEnergy!(ψ, real(avg_energy), estimator_list, e_list; lr=lr)
         end
 
+        if opt_step == OptimizationSteps
+            @save "./data/Jastraw_El.bson" e_list
+        end
     end
 end
 
@@ -194,6 +197,7 @@ function RunVMCNQS(
         estimator_ls, re = LocalEstimator(ψ, acc_configs[1:5:end])
         ψ = OptimizeEnergy!(ψ, avg_energy, estimator_ls, loc_e_list, re, opt)
 
+
     end
     @save init_params ψ
 
@@ -243,7 +247,7 @@ function RunVMCNQS(
             @info "Initializing model parameters randomly"
         end
     elseif wf_type == :TransformerNet
-        ψ = Flux.f32(TransformerNet(; num_att_block=3, num_heads=4, num_slaters=3, embsize=12, Nx=Nx, Ny=Ny, Nelec=(Nup + Ndn)))
+        ψ = Flux.f32(TransformerNet(; num_att_block=4, num_heads=4, num_slaters=1, embsize=24, Nx=Nx, Ny=Ny, Nelec=(Nup + Ndn)))
         if isfile(init_params)
             @info "Loading pre-trained model parameters from $init_params"
             data = BSON.load(init_params)
@@ -294,8 +298,11 @@ function RunVMCNQS(
         #optimize
         estimator_ls, re = LocalEstimator(ψ, acc_configs[1:5:end])
         ψ = OptimizeEnergy!(ψ, avg_energy, estimator_ls, loc_e_list, re, opt)
-
+        if OptimizationSteps == 1
+            @save "./data/Attention_El.bson" loc_e_list
+        end
     end
+
     @save init_params ψ
 
 

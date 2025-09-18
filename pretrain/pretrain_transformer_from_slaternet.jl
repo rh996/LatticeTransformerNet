@@ -8,21 +8,21 @@ let
     # --- Parameters ---
     # SlaterNet parameters (should match the pre-trained model)
     slater_emb_size = 24
-    Nx = 4
-    Ny = 4
-    Nelec = 4
-    slater_model_filename = "./data/test4.bson" # Assumes pre-trained model from pretrain2.jl
+    Nx = 6
+    Ny = 6
+    Nelec = 20
+    slater_model_filename = "./data/test20.bson" # Assumes pre-trained model from pretrain2.jl
 
     # TransformerNet parameters
     num_att_block = 3
     num_heads = 4
-    num_slaters = 3
+    num_slaters = 1
     transformer_embsize = 24
 
     # Training parameters
-    lr = 0.001
+    lr = 0.01
     nsample = 2000
-    epochs = 5000
+    epochs = 1000
 
     # --- 1. Load Pre-trained SlaterNet ---
     println("Attempting to load pre-trained SlaterNet...")
@@ -42,7 +42,7 @@ let
     # --- 2. Generate Training Data from SlaterNet ---
     println("Generating $nsample training samples from SlaterNet...")
     xs = Array{Int32}(undef, Nelec, nsample)
-    ys = Array{Float32}(undef, Nelec, Nelec * num_slaters, nsample)
+    ys = Array{Float32}(undef, Nelec, Nelec, nsample)
     L = Nx * Ny * 2 # Total number of orbitals
 
     for i in 1:nsample
@@ -51,10 +51,7 @@ let
         xs[:, i] = selected_orbitals
         # Generate the target matrix from the pre-trained SlaterNet
         # The output needs to be reshaped from a vector to a matrix
-        base_matrix = reshape(slater_net(selected_orbitals), Nelec, Nelec)
-        for s in 1:num_slaters
-            ys[:, ((s - 1) * Nelec + 1):(s * Nelec), i] = base_matrix
-        end
+        ys[:, :, i] = reshape(slater_net(selected_orbitals), Nelec, Nelec)
     end
     println("Training data generated.")
 
@@ -77,9 +74,9 @@ let
     # --- 4. Train the TransformerNet ---
     loss_fn(model, X, Y) = begin
         y_pred = model(X)
-        y_pred_reshaped = reshape(y_pred, Nelec, Nelec * num_slaters, size(X, 2))
-        # Use Mean Squared Error between the predicted and target matrices
-        Flux.Losses.mse(y_pred_reshaped, Y)
+        y_pred_tensor = reshape(y_pred, Nelec, Nelec, num_slaters, size(X, 2))
+        # Only supervise the first determinant to match the SlaterNet output
+        Flux.Losses.mse(@view(y_pred_tensor[:, :, 1, :]), Y)
     end
 
     opt_state = Flux.setup(AdamW(lr), transformer_net)
@@ -108,8 +105,12 @@ let
         transformer_output_tensor = reshape(transformer_net(sample_x), Nelec, Nelec, num_slaters)
 
         println("Sample ", i)
-        println("  SlaterNet determinant:      ", logabsdet(slater_output_matrix))
-        for s in 1:num_slaters
+        slater_det = logabsdet(slater_output_matrix)
+        println("  SlaterNet determinant:      ", slater_det)
+        transformer_det = logabsdet(transformer_output_tensor[:, :, 1])
+        mse_val = Flux.Losses.mse(transformer_output_tensor[:, :, 1], slater_output_matrix)
+        println("  Transformer determinant 1:  ", transformer_det, "  MSE: ", mse_val)
+        for s in 2:num_slaters
             transformer_det = logabsdet(transformer_output_tensor[:, :, s])
             mse_val = Flux.Losses.mse(transformer_output_tensor[:, :, s], slater_output_matrix)
             println("  Transformer determinant $(s): ", transformer_det, "  MSE: ", mse_val)

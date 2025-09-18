@@ -164,9 +164,9 @@ end
 # --- Main Execution Block ---
 let
     # --- Parameters ---
-    Nx = 4
-    Ny = 4
-    Nelec = 8
+    Nx = 6
+    Ny = 6
+    Nelec = 20
     t_hopping = 1.0
     u_interaction = 5.0
 

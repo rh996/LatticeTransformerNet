@@ -83,14 +83,29 @@ function LocalEstimator(ψ::Union{SlaterNet,TransformerNet}, xs::Vector{Configur
 
 end
 
-function OptimizeEnergy!(ψ::Union{SlaterNet,TransformerNet}, EnergyEx::Float64, LocalEstimatorList::Vector, LocalEList::Vector, re, opt)
-    #TODO: clip the gradient
+function OptimizeEnergy!(ψ::Union{SlaterNet,TransformerNet}, EnergyEx::Float64, LocalEstimatorList::Vector, LocalEList::Vector, re, opt; theta::Real=5.0)
+    # clip high-energy configurations before forming the gradient
 
+    energies = real.(LocalEList)
+    mean_energy = mean(energies)
+    low_thr = mean_energy - theta
+    high_thr = mean_energy + theta
+    if low_thr > high_thr
+        low_thr, high_thr = high_thr, low_thr
+    end
+    mask = [low_thr <= e <= high_thr for e in energies]
 
-    T = eltype(LocalEstimatorList[1])
-    E_m_E_ex = T.(LocalEList .- EnergyEx)
-    # @show size(E_m_E_ex)
-    Avegradient = T(2) * mean(E_m_E_ex .* LocalEstimatorList)
+    if !any(mask)
+        mask .= true
+    end
+
+    filtered_estimators = LocalEstimatorList[mask]
+    filtered_energies = LocalEList[mask]
+
+    T = eltype(filtered_estimators[1])
+    energy_type = eltype(filtered_energies)
+    E_m_E_ex = T.(filtered_energies .- energy_type(EnergyEx))
+    Avegradient = T(2) * mean(E_m_E_ex .* filtered_estimators)
 
     Avegradient = re(Avegradient)
 

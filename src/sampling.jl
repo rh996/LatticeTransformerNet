@@ -94,9 +94,9 @@ end
 function CombinationalUpdate(x::Configuration, Nup, Ndn)
     L = div(length(x.Orbitals), 2)
     p = rand()
-    if p < 0.2
+    if p < 0.7
         return SpinConserveLocalUpdate(x, Nup, Ndn)
-    elseif p < 0.7
+    elseif p < 0.8
         return initialize_configuration(Nup, Ndn, L)
     else
         return SpinflipUpdate(x)

@@ -24,12 +24,12 @@ let
         2,
         1.0,
         5.0;
-        TotalSteps=51000,
+        TotalSteps=101000,
         ThermalizationSteps=1000,
-        OptimizationSteps=50,
+        OptimizationSteps=1,
         seed=1,
         init_params="./data/test4.bson",
         wf_type=:SlaterNet,
-        lr=1e-3
+        lr=1e-5
     )
 end
