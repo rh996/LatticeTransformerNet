@@ -8,6 +8,8 @@ using ProgressMeter
 using BSON
 using BSON: @save, @load
 
+using CUDA
+CUDA.allowscalar(false)
 include("wavefunctions.jl")
 include("hamiltonians.jl")
 include("sampling.jl")
@@ -261,6 +263,7 @@ function RunVMCNQS(
         # ψ = ψ_transform
     end
 
+    ψ = gpu(ψ)
     opt = Flux.setup(AdamW(lr), ψ)
     @info "Training model with $wf_type wavefunction"
 
@@ -298,12 +301,12 @@ function RunVMCNQS(
         #optimize
         estimator_ls, re = LocalEstimator(ψ, acc_configs[1:5:end])
         ψ = OptimizeEnergy!(ψ, avg_energy, estimator_ls, loc_e_list, re, opt)
-        if OptimizationSteps == 1
-            @save "./data/Attention_El.bson" loc_e_list
-        end
+        # if OptimizationSteps == 1
+        #     @save "./data/Attention_El.bson" loc_e_list
+        # end
     end
 
-    @save init_params ψ
+    # @save init_params ψ
 
 
 

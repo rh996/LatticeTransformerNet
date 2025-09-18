@@ -66,7 +66,7 @@ function LocalEstimator(ψ::Union{SlaterNet,TransformerNet}, xs::Vector{Configur
         logabsamplitude(m, first_config)[1]
     end
 
-    first_vec, re = destructure(grads[1])
+    first_vec, re = Flux.destructure(grads[1])
     local_est_list = Vector{typeof(first_vec)}(undef, length(xs))
     local_est_list[1] = first_vec
 
@@ -75,8 +75,8 @@ function LocalEstimator(ψ::Union{SlaterNet,TransformerNet}, xs::Vector{Configur
             logabsamplitude(m, x)[1]
         end
 
-        v, _ = destructure(grads_i[1])
-        local_est_list[idx + 1] = v
+        v, _ = Flux.destructure(grads_i[1])
+        local_est_list[idx+1] = v
     end
 
     return local_est_list, re

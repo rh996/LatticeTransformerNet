@@ -278,9 +278,9 @@ end
 end
 
 struct Encoder
-    G1::Vector{Float32}
-    G2::Vector{Float32}
-    PositionVectors::Matrix{Float32}
+    G1::AbstractArray{Float32}
+    G2::AbstractArray{Float32}
+    PositionVectors::AbstractMatrix{Float32}
 end
 
 struct SlaterNet <: Wavefunction
@@ -320,11 +320,11 @@ end
 
 (sl::SlaterNet)(x_in) = begin
     feature = Flux.Zygote.@ignore sl.encoder(x_in)
-    Nelec = size(feature, 2)
-    batch_size = size(feature, 3)
-    feature_reshaped = reshape(feature, 7, Nelec * batch_size)
+    # Nelec = size(feature, 2)
+    # batch_size = size(feature, 3)
+    # feature_reshaped = reshape(feature, 7, Nelec * batch_size)
     # x_processed = sl.layernorm(feature_reshaped)
-    x_processed = sl.W0(feature_reshaped)
+    x_processed = sl.W0(feature)
 
     for layer in sl.mlp
         x_processed = layer(x_processed)
@@ -332,16 +332,20 @@ end
 
     RealOrbitals = sl.ReProj(x_processed)
 
-    RealOrbitals_reshaped = reshape(RealOrbitals, Nelec, Nelec * batch_size)
+    # RealOrbitals_reshaped = reshape(RealOrbitals, Nelec, Nelec * batch_size)
 
     # dets = [det(realamp_reshaped[:, :, i] + 1e-6 * I) for i in 1:batch_size]
 
 
-    return RealOrbitals_reshaped
+    return RealOrbitals
 end
-
 function logabsamplitude(ψ::SlaterNet, x::Configuration)
-    logabs, phase = logabsdet(ψ(x.Electrons))
+    amps = ψ(x.Electrons)
+    if typeof(amps) <: CuArray
+        logabs, phase = logabsdet_cuda(amps)
+    else
+        logabs, phase = logabsdet(amps)
+    end
     return logabs, phase
 end
 
@@ -378,9 +382,9 @@ end
 
 function Encoder(; Nx, Ny)
     Encoder(
-        [2π / Nx, 0],
-        [0, 2π / Ny],
-        create_position_vectors(Nx, Ny)
+        cu([2π / Nx, 0]),
+        cu([0, 2π / Ny]),
+        gpu(create_position_vectors(Nx, Ny))
     )
 end
 
@@ -392,48 +396,41 @@ end
     #dimension of x (Nelec,batch_size)
     Nelec, batch_size = size(x)
 
-    Rvec = reshape(encoder.PositionVectors[:, x[:]], 2, Nelec, batch_size)
+    # Ensure contiguous memory layout for GPU compatibility
 
-    # manual broadcast of matrix multiplication
-    inner1 = reshape(encoder.G1' * reshape(Rvec, 2, :), 1, Nelec, batch_size)
-    inner2 = reshape(encoder.G2' * reshape(Rvec, 2, :), 1, Nelec, batch_size)
 
-    #feature dimension (feature_dim,Nelec,batch_size)
+    Rvec = encoder.PositionVectors[:, vec(x)]
+
+    G1_expanded = reshape(encoder.G1, 1, 2)
+    G2_expanded = reshape(encoder.G2, 1, 2)
+
+    inner1 = G1_expanded * Rvec
+    inner2 = G2_expanded * Rvec
+
+
+    #feature dimension (feature_dim,Nele*batch_size)
     feature = vcat(sin.(inner1), sin.(inner2), cos.(inner1), cos.(inner2))
 
-    feature2 = zeros(Float32, 3, Nelec, batch_size)
 
-    # Fill spin information
+    # Vectorized spin information computation
+    spin_up_mask = mod.(x, 2) .== 1
+    ch1 = reshape(Float32.(spin_up_mask), 1, Nelec * batch_size)
+    ch2 = reshape(Float32.(.!spin_up_mask), 1, Nelec * batch_size)
+
+    # Vectorized doubly occupied orbital computation
+    spatial_orbitals = fld1.(x, 2)
+    ch3 = similar(Float32.(spatial_orbitals))
     for b in 1:batch_size
-        for n in 1:Nelec
-            # Check if spin up (odd index) or spin down (even index)
-            if mod(x[n, b], 2) == 1  # Spin up
-                feature2[1, n, b] = 1.0
-            else  # Spin down
-                feature2[2, n, b] = 1.0
-            end
-
-            # Check for doubly occupied orbitals
-            spatial_orbital = fld1(x[n, b], 2)  # Get spatial orbital index
-
-            # Count electrons in this spatial orbital
-            orbital_count = count(i -> fld1(x[i, b], 2) == spatial_orbital, 1:Nelec)
-
-            # If orbital is doubly occupied, set feature2[3, n, b] = 1
-            if orbital_count > 1
-                feature2[3, n, b] = 1.0
-            end
-        end
+        s = spatial_orbitals[:, b]
+        counts = sum(s .== s', dims=2)
+        ch3[:, b] .= Float32.(vec(counts) .> 1)
     end
+    ch3 = reshape(ch3, 1, Nelec * batch_size)
 
     # Concatenate features
-    feature = vcat(feature, feature2)
+    feature = vcat(feature, ch1, ch2, ch3)
 
-
-
-
-
-
+    # return reshape(feature, size(feature, 1), Nelec, batch_size)
     return feature
 end
 

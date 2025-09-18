@@ -41,19 +41,27 @@ end
 
 
 
-# function logabsdet(A::AbstractArray{T,3}) where {T<:Union{Float32,Float64}}
-#     ndet = size(A, 3)
-#     s = []
-#     logs = []
-#     for i in ndet
-#         log_t, s_t = logabsdet(A[:, :, i])
-#         push!(logs, log_t)
-#         push!(s, s_t)
-#     end
-#     logs = vec(logs)
-#     logmax = maximum(logs)
-#     logs = logs .- logmax
 
+# Returns (log|det(A)|, sign(det(A))) for real CuArray A
+function logabsdet_cuda(A::CuArray{T,2}) where {T<:AbstractFloat}
+    # lu! overwrites; copy if you need A later
+    F = lu!(copy(A); check=false)               # cuSOLVER getrf! on device
 
-#     return
-# end
+    # Diagonal of U lives on the diagonal of the packed factors
+    d = diag(F.factors)                         # CuVector on device
+
+    # log|det(A)| = sum(log(abs(diag(U))))
+    logabs = sum(log.(abs.(d)))                 # GPU reduction -> host scalar
+
+    # sign(det(A)) = (-1)^(#row-swaps) * prod(sign(diag(U)))
+    sgnU = prod(sign.(d))                       # in {-1, 0, +1} (0 if singular)
+
+    n = size(A, 1)
+    idx = CUDA.CuArray(collect(Int32, 1:n))    # [1,2,...,n] on device
+    swaps = sum(F.ipiv .!= idx)                 # GPU reduction counting swaps
+    pivotsgn = ifelse(isodd(swaps), -one(T), one(T))
+
+    sgn = pivotsgn * sgnU
+
+    return logabs, sgn
+end
